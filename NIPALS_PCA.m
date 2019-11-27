@@ -39,8 +39,7 @@ if Options.MVCheck
     if ~any(MVX,'all')
         MVX = [];  %No missing values, returns MV=[];
     else
-        col_rem = [];
-        row_rem = [];
+
         % check for colums with too many missing values
         mv_col = sum(MVX,1);
         col_rem = find(mv_col / N * 100 > Options.MVTolCol);
@@ -169,6 +168,7 @@ while OneMoreComp
         case 'Random'
             t0 =  X(:,randi(M));
     end
+    p0 = ones(K,1);
     Converged = false;
     MaxIterStop = false;
     ConvergenceValueStop = false;
@@ -193,18 +193,19 @@ while OneMoreComp
         end
         
         %Check Convergence
-        ConvergenceValue = sum((t-t0).^2);
+        Conv_Value_t = sum((t-t0).^2);
+        Conv_Value_p = sum((p-p0).^2);
         
         if CurrentComp > 1
-            ConvergenceRatio = ConvergnceValue_old/ConvergenceValue;
+            ConvergenceRatio = ConvergnceValue_old/Conv_Value_t;
             MaxOrth = max(abs(sum(t.*T(:,1:CurrentComp-1),1)));
         else
             ConvergenceRatio = NaN;
         end
         if strcmp('Iteration',Options.Verbose)
-            fprintf('%u\t%u\t%g\t%g\t%g\n',CurrentComp,nit,ConvergenceValue,ConvergenceRatio,MaxOrth)
+            fprintf('%u\t%u\t%g\t%g\t%g\n',CurrentComp,nit,Conv_Value_t,ConvergenceRatio,MaxOrth)
         end
-        if nit > 10 && ConvergenceValue < Options.ConvValue && ConvergenceRatio < 1
+        if nit > 10 && Conv_Value_t < Options.ConvValue && ConvergenceRatio < 1
             nIncreasedConv = nIncreasedConv + 1;
         end
         % Check individual stopping criteria
@@ -212,7 +213,7 @@ while OneMoreComp
             MaxIterStop = true;
         end
         
-        if ConvergenceValue > 5
+        if Conv_Value_t > 5
             ConvergenceRatioStop = true;
         end
         if nIncreasedConv > 5
@@ -223,8 +224,9 @@ while OneMoreComp
             Converged = true;
         else
             t0 = t;
+            p0 = p;
             nit = nit + 1;
-            ConvergnceValue_old = ConvergenceValue;
+            ConvergnceValue_old = Conv_Value_t;
         end
     end
     
@@ -250,7 +252,7 @@ while OneMoreComp
         PCAmodel.nIter(CurrentComp) = nit;
         PCAmodel.MaxOrth(CurrentComp) = MaxOrth;
     end
-    fprintf('%4u %5u %8.1f %6.2f %6.2f %8.2g %8.2g\n',CurrentComp,nit,PCAmodel.Eig(CurrentComp),PCAmodel.ExplVar(CurrentComp),PCAmodel.ExplVarCum(CurrentComp),ConvergenceValue,PCAmodel.MaxOrth(CurrentComp))
+    fprintf('%4u %5u %8.1f %6.2f %6.2f %8.2g %8.2g\n',CurrentComp,nit,PCAmodel.Eig(CurrentComp),PCAmodel.ExplVar(CurrentComp),PCAmodel.ExplVarCum(CurrentComp),Conv_Value_t,PCAmodel.MaxOrth(CurrentComp))
     if CurrentComp >= Options.NumComp || PCAmodel.ExplVarCum(CurrentComp) >= Options.ExplVarStop
         OneMoreComp = false;
     end
@@ -272,29 +274,29 @@ end
 
 end
 
-function p = parseArguments(varargin)
-p = inputParser;
+function options = parseArguments(varargin)
+options = inputParser;
 
 expectedVerbose = {'Comp', 'Iteration', 'None'};
 expectedStopCriteria = {'Bottom', 'ConvValue'};
 expectedTstart = {'Ones', 'MaxVar','Random'};
-addParameter(p,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
-addParameter(p,'StopCriteria', 'Bottom', @(x) any(validatestring(x,expectedStopCriteria)));
-addParameter(p,'Tstart', 'Ones', @(x) any(validatestring(x,expectedTstart)));
-addParameter(p,'ScaleX', false, @islogical);
-addParameter(p,'CentreX', true, @islogical);
-addParameter(p,'MVCheck', true, @islogical);
-addParameter(p,'MVTolCol', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
-addParameter(p,'MVTolRow', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
-addParameter(p,'MVAverage', false, @islogical);
-addParameter(p,'ConvValue', 1e-20, @(x) isnumeric(x) && isscalar(x));
-addParameter(p,'MaxOrtho', 1e-8, @(x) isnumeric(x) && isscalar(x));
-addParameter(p,'ExplVarStop', 100, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
-addParameter(p,'MaxComp', 100, @(x) isnumeric(x) && isscalar(x) && x>0);
-addParameter(p,'MaxIter', 500, @(x) isnumeric(x) && isscalar(x) && x>0);
-addParameter(p,'Verbose', 'Comp', @(x) any(validatestring(x,expectedVerbose)));
-parse(p,varargin{:});
-p = p.Results;
+addParameter(options,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
+addParameter(options,'StopCriteria', 'Bottom', @(x) any(validatestring(x,expectedStopCriteria)));
+addParameter(options,'Tstart', 'Ones', @(x) any(validatestring(x,expectedTstart)));
+addParameter(options,'ScaleX', false, @islogical);
+addParameter(options,'CentreX', true, @islogical);
+addParameter(options,'MVCheck', true, @islogical);
+addParameter(options,'MVTolCol', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
+addParameter(options,'MVTolRow', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
+addParameter(options,'MVAverage', false, @islogical);
+addParameter(options,'ConvValue', 1e-14, @(x) isnumeric(x) && isscalar(x));
+addParameter(options,'MaxOrtho', 1e-8, @(x) isnumeric(x) && isscalar(x));
+addParameter(options,'ExplVarStop', 100, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
+addParameter(options,'MaxComp', 100, @(x) isnumeric(x) && isscalar(x) && x>0);
+addParameter(options,'MaxIter', 500, @(x) isnumeric(x) && isscalar(x) && x>0);
+addParameter(options,'Verbose', 'Comp', @(x) any(validatestring(x,expectedVerbose)));
+parse(options,varargin{:});
+options = options.Results;
 end
 
 
