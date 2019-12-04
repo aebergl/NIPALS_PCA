@@ -1,5 +1,4 @@
 function [T,P,PCAmodel,X] = NIPALS_PCA(X,varargin)
-
 % NIPALS PCA
 
 
@@ -31,15 +30,16 @@ end
 MVX=[];
 [N,K] = size(X);
 if Options.MVCheck
+    
     if Options.Verbose
         fprintf('\n')
         fprintf('Checking for missing values....\n')
     end
-    MVX = isnan(X);
+    
+    MVX = isnan(X); %Logical matrix with true for NaNs
     if ~any(MVX,'all')
         MVX = [];  %No missing values, returns MV=[];
     else
-
         % check for colums with too many missing values
         mv_col = sum(MVX,1);
         col_rem = find(mv_col / N * 100 > Options.MVTolCol);
@@ -61,6 +61,7 @@ if Options.MVCheck
             fprintf('%u rows removed with more than %u %% missing values\n',length(row_rem),Options.MVTolRow);
             mv_col = sum(MVX); %Checks again
         end
+        
         %Replace NaN with zeros
         X(MVX) = 0;
         MVX = ~MVX; % Create the "Hole" matrix with 0 where there are NaNs
@@ -92,12 +93,12 @@ if Options.ScaleX == 1
         fprintf('\n')
         fprintf('Normalizing to unit variance....\n')
     end
-    if isempty(MV)% No MV
+    if isempty(MVX)% No MV
         PCAmodel.x_weight = sqrt(sum(X.^2,1)*(1/(N-1)));
     else
         PCAmodel.x_weight = sqrt(sum(X.^2,1) ./ ((N - mv_col) - 1));
     end
-    indx = (PCAmodel.x_weight < 1e-8);
+    indx = (PCAmodel.x_weight < 1e-8); %Rplace
     PCAmodel.x_weight = 1 ./ PCAmodel.x_weight;
     PCAmodel.x_weight(indx) = 0;
     X = bsxfun(@times, X, PCAmodel.x_weight); %same as X = X .* (ones(N,1) * x_weight);
@@ -107,8 +108,9 @@ if Options.ScaleX == 1
 end
 
 if Options.MVAverage % Use zeros instaed of Missing Values
-    MVX = [];    
+    MVX = [];
 end
+
 % Decide/estimate PCA components to calculate
 if nargin == 1
     Options.NumComp = 10;
@@ -142,7 +144,7 @@ if nargout > 2
     PCAmodel.StopCrit = cell(Options.NumComp,1);
 end
 
-ssx_orig = sum(X.^2,'all');
+ssx_orig = sum(X.^2,'all'); % Original sum of squares
 if ssx_orig < 1e-10
     error('X has close to zero variance');
 end
@@ -156,6 +158,7 @@ end
 OneMoreComp = true;
 CurrentComp = false;
 MaxOrth = 1;
+
 while OneMoreComp
     CurrentComp = CurrentComp + 1;
     nit=0;
@@ -163,11 +166,14 @@ while OneMoreComp
         case 'Ones'
             t0 = X * (ones(K,1) ./ sqrt(K)); % Ensures no sign flipping and that changes in number of variables or samples give the same sign
         case 'MaxVar'
-            [~,indx] = max(sum(X.^2),[],1);
+            [~,indx] = max(sum(X.^2),[],1); %Start with x-variable which has the largest variance
             t0 = X(:,indx);
         case 'Random'
             t0 =  X(:,randi(M));
+        case 'First'
+            t0 =  X(:,1);
     end
+    
     p0 = ones(K,1);
     Converged = false;
     MaxIterStop = false;
@@ -197,30 +203,38 @@ while OneMoreComp
         Conv_Value_p = sum((p-p0).^2);
         
         if CurrentComp > 1
-            ConvergenceRatio = ConvergnceValue_old/Conv_Value_t;
+            % Check orthogonality to previous components
             MaxOrth = max(abs(sum(t.*T(:,1:CurrentComp-1),1)));
+        end
+        if nit > 0
+            if Conv_Value_t > 0
+                ConvergenceRatio = ConvergnceValue_old/Conv_Value_t;
+            end
         else
             ConvergenceRatio = NaN;
         end
+        
         if strcmp('Iteration',Options.Verbose)
             fprintf('%u\t%u\t%g\t%g\t%g\n',CurrentComp,nit,Conv_Value_t,ConvergenceRatio,MaxOrth)
         end
-        if nit > 10 && Conv_Value_t < Options.ConvValue && ConvergenceRatio < 1
+        
+        if nit > 5 && ConvergenceRatio <= 1
             nIncreasedConv = nIncreasedConv + 1;
         end
+        
         % Check individual stopping criteria
         if nit >= Options.MaxIter
             MaxIterStop = true;
         end
         
-        if Conv_Value_t > 5
-            ConvergenceRatioStop = true;
+        if Conv_Value_t < Options.ConvValue && Conv_Value_p < Options.ConvValue
+            ConvergenceValueStop = true;
         end
-        if nIncreasedConv > 5
+        if nIncreasedConv > 0
             ConvergenceRatioStop = true;
         end
         
-        if nIncreasedConv > 5 || nit >= Options.MaxIter
+        if MaxIterStop || (ConvergenceValueStop && ConvergenceRatioStop) || Conv_Value_t == 0
             Converged = true;
         else
             t0 = t;
@@ -234,26 +248,34 @@ while OneMoreComp
     if ~isempty(MVX)
         X(~MVX) = 0;
     end
-
+    
     if nargout > 0
         T(:,CurrentComp) = t;
     end
     if nargout > 1
         P(:,CurrentComp) = p;
     end
+    ExplVarCum = (ssx_orig - sum(X.^2,'all')) / ssx_orig * 100; % Calculate cumulative explained variation
+    
+    if CurrentComp == 1
+        ExplVar = ExplVarCum;
+    else
+        ExplVar = ExplVarCum - ExplVarCum_PrevComp;
+    end
+    ExplVarCum_PrevComp = ExplVarCum;
+    Eig = ExplVar * min_N_K / 100; %Calculates the eigen value
+
     if nargout > 2
-        PCAmodel.ExplVarCum(CurrentComp) = (ssx_orig - sum(X.^2,'all')) / ssx_orig * 100; % Calculate cumulative explained variation
-        if CurrentComp == 1
-            PCAmodel.ExplVar(CurrentComp) = PCAmodel.ExplVarCum(CurrentComp);
-        else
-            PCAmodel.ExplVar(CurrentComp) = PCAmodel.ExplVarCum(CurrentComp) - PCAmodel.ExplVarCum(CurrentComp-1);
-        end
-        PCAmodel.Eig(CurrentComp) = PCAmodel.ExplVar(CurrentComp) * min_N_K; %Calculates the eaigen value
+        PCAmodel.ExplVarCum(CurrentComp) = ExplVarCum;
+        
+        PCAmodel.ExplVar(CurrentComp) = ExplVar;
+        
+        PCAmodel.Eig(CurrentComp) = Eig;
         PCAmodel.nIter(CurrentComp) = nit;
         PCAmodel.MaxOrth(CurrentComp) = MaxOrth;
     end
-    fprintf('%4u %5u %8.1f %6.2f %6.2f %8.2g %8.2g\n',CurrentComp,nit,PCAmodel.Eig(CurrentComp),PCAmodel.ExplVar(CurrentComp),PCAmodel.ExplVarCum(CurrentComp),Conv_Value_t,PCAmodel.MaxOrth(CurrentComp))
-    if CurrentComp >= Options.NumComp || PCAmodel.ExplVarCum(CurrentComp) >= Options.ExplVarStop
+    fprintf('%4u %5u %8.1f %6.2f %6.2f %8.2g %8.2g\n',CurrentComp,nit,Eig,ExplVar,ExplVarCum,Conv_Value_t,MaxOrth)
+    if CurrentComp >= Options.NumComp || ExplVarCum >= Options.ExplVarStop
         OneMoreComp = false;
     end
 end
@@ -266,7 +288,7 @@ end
 if nargout > 2
     PCAmodel.ExplVarCum  = PCAmodel.ExplVarCum(1:CurrentComp);
     PCAmodel.ExplVar = PCAmodel.ExplVar(1:CurrentComp);
-    PCAmodel.Eig  = PCAmodel.Eig(1:CurrentComp); 
+    PCAmodel.Eig  = PCAmodel.Eig(1:CurrentComp);
     PCAmodel.nIter = PCAmodel.nIter(1:CurrentComp);
     PCAmodel.MaxOrth = PCAmodel.MaxOrth(1:CurrentComp);
 end
@@ -279,7 +301,7 @@ options = inputParser;
 
 expectedVerbose = {'Comp', 'Iteration', 'None'};
 expectedStopCriteria = {'Bottom', 'ConvValue'};
-expectedTstart = {'Ones', 'MaxVar','Random'};
+expectedTstart = {'Ones', 'MaxVar','Random','First'};
 addParameter(options,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
 addParameter(options,'StopCriteria', 'Bottom', @(x) any(validatestring(x,expectedStopCriteria)));
 addParameter(options,'Tstart', 'Ones', @(x) any(validatestring(x,expectedTstart)));
