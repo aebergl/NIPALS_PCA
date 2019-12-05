@@ -316,7 +316,7 @@ addParameter(options,'ConvValue', 1e-14, @(x) isnumeric(x) && isscalar(x));
 addParameter(options,'MaxOrtho', 1e-8, @(x) isnumeric(x) && isscalar(x));
 addParameter(options,'ExplVarStop', 100, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
 addParameter(options,'MaxComp', 100, @(x) isnumeric(x) && isscalar(x) && x>0);
-addParameter(options,'MaxIter', 500, @(x) isnumeric(x) && isscalar(x) && x>0);
+addParameter(options,'MaxIter', 1000, @(x) isnumeric(x) && isscalar(x) && x>0);
 addParameter(options,'Verbose', 'Comp', @(x) any(validatestring(x,expectedVerbose)));
 parse(options,varargin{:});
 options = options.Results;
