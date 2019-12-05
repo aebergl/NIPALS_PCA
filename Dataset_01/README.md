@@ -4,8 +4,9 @@ IRIS dataset
 4 variables
 
 **PCA model results**  
-mean	=  5.8433, 3.0540, 3.7587, 1.1987 
-weight = 1.2076, 2.3063, 0.5668, 1.3103 
+mean	=  5.8433, 3.0540, 3.7587, 1.1987  
+weight = 1.2076, 2.3063, 0.5668, 1.3103  
+
 
 | Comp | Iter | Eig | Var(%) | VarCum(%) | ConvValue| Orthogonality |
 | --- | ---- | --- | ----- | ------ | ----- | ----- |
