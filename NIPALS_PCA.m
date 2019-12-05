@@ -162,19 +162,20 @@ MaxOrth = 1;
 while OneMoreComp
     CurrentComp = CurrentComp + 1;
     nit=0;
+    p0 = ones(K,1) ./ sqrt(K);
     switch Options.Tstart
         case 'Ones'
-            t0 = X * (ones(K,1) ./ sqrt(K)); % Ensures no sign flipping and that changes in number of variables or samples give the same sign
+            t0 = X * p0; % Ensures no sign flipping and that changes in number of variables or samples give the same sign
         case 'MaxVar'
-            [~,indx] = max(sum(X.^2),[],1); %Start with x-variable which has the largest variance
+            [~,indx] = max(sum(X.^2)); %Start with x-variable which has the largest variance
             t0 = X(:,indx);
         case 'Random'
-            t0 =  X(:,randi(M));
+            t0 =  X(:,randi(K));
         case 'First'
             t0 =  X(:,1);
     end
     
-    p0 = ones(K,1);
+    
     Converged = false;
     MaxIterStop = false;
     ConvergenceValueStop = false;
@@ -218,7 +219,7 @@ while OneMoreComp
             fprintf('%u\t%u\t%g\t%g\t%g\n',CurrentComp,nit,Conv_Value_t,ConvergenceRatio,MaxOrth)
         end
         
-        if nit > 5 && ConvergenceRatio <= 1
+        if ConvergenceRatio <= 1 && Conv_Value_t < Options.ConvValue
             nIncreasedConv = nIncreasedConv + 1;
         end
         
@@ -304,7 +305,7 @@ expectedStopCriteria = {'Bottom', 'ConvValue'};
 expectedTstart = {'Ones', 'MaxVar','Random','First'};
 addParameter(options,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
 addParameter(options,'StopCriteria', 'Bottom', @(x) any(validatestring(x,expectedStopCriteria)));
-addParameter(options,'Tstart', 'Ones', @(x) any(validatestring(x,expectedTstart)));
+addParameter(options,'Tstart', 'P', @(x) any(validatestring(x,expectedTstart)));
 addParameter(options,'ScaleX', false, @islogical);
 addParameter(options,'CentreX', true, @islogical);
 addParameter(options,'MVCheck', true, @islogical);
