@@ -1,8 +1,8 @@
 **Example 2**  
-Foods dataset
-16 samples
-20 variables 
-3 missing values
+Foods dataset  
+16 samples  
+20 variables  
+3 missing values  
 
 **PCA model results**  
 mean	=  78.5625 39.2500 78.5000 18.0000 60.6667 49.0000 18.3125 12.7500 21.8750 15.8750 66.8125 70.5000 41.9375 55.1875 42.3125 75.8125 69.1250 54.1875 20.5333 27.7500

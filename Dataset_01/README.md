@@ -1,7 +1,7 @@
 **Example 1**  
-IRIS dataset
-150 samples
-4 variables
+IRIS dataset  
+150 samples  
+4 variables   
 
 **PCA model results**  
 mean	=  5.8433, 3.0540, 3.7587, 1.1987  
