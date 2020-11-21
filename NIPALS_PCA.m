@@ -1,4 +1,4 @@
-function [T,P,PCAmodel,X] = NIPALS_PCA(X,varargin)
+function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 % NIPALS PCA
 
 
@@ -6,6 +6,7 @@ function [T,P,PCAmodel,X] = NIPALS_PCA(X,varargin)
 if nargin < 1
     error('NIPALS_PCA requires at least a matrix as input');
 end
+
 if ~ismatrix(X) || ~isnumeric(X) || min(size(X)) < 2
     error('The first input needs to be a NxM matrix with N & M > 1');
 end
@@ -27,6 +28,7 @@ else
 end
 
 % Check for Missing values
+
 MVX=[];
 [N,K] = size(X);
 if Options.MVCheck
@@ -72,42 +74,52 @@ end
 min_N_K = min([N,K]);
 % Remove mean
 if Options.CentreX == 1
+    
     if Options.Verbose
         fprintf('\n')
         fprintf('Removing mean....\n')
     end
+    
     if isempty(MVX) %No missing values
         PCAmodel.x_mean = sum(X,1,'includenan','default') ./ N;
     else %Missing values
         PCAmodel.x_mean = sum(X,1) ./ (N - mv_col);
     end
+    
     X = bsxfun(@minus, X, PCAmodel.x_mean); %same as X = X - (ones(N,1) * x_mean);
+    
     if ~isempty(MVX)
         X(~MVX) = 0; %replace MV's with zeros
     end
+    
 end
 
 % Scale each variable to unit variance
 if Options.ScaleX == 1
+    
     if Options.Verbose
         fprintf('\n')
         fprintf('Normalizing to unit variance....\n')
     end
+    
     if isempty(MVX)% No MV
         PCAmodel.x_weight = sqrt(sum(X.^2,1)*(1/(N-1)));
     else
         PCAmodel.x_weight = sqrt(sum(X.^2,1) ./ ((N - mv_col) - 1));
     end
-    indx = (PCAmodel.x_weight < 1e-8); %Rplace
+    
+    indx = (PCAmodel.x_weight < 1e-8); %Replace
     PCAmodel.x_weight = 1 ./ PCAmodel.x_weight;
     PCAmodel.x_weight(indx) = 0;
+    
     X = bsxfun(@times, X, PCAmodel.x_weight); %same as X = X .* (ones(N,1) * x_weight);
+    
     if ~isempty(MVX)
         X(~MVX) = 0;%replace MV's with zeros
     end
 end
 
-if Options.MVAverage % Use zeros instaed of Missing Values
+if Options.MVAverage % Use zeros instaed of MVs, same as replacing MVs with mean
     MVX = [];
 end
 
@@ -129,20 +141,16 @@ if ~strcmpi('none',Options.Verbose)
     fprintf('Initiate PCA calculations....\n')
 end
 
-if nargout > 0
-    T = zeros(N,Options.NumComp);
-end
-if nargout > 1
-    P = zeros(K,Options.NumComp);
-end
-if nargout > 2
-    PCAmodel.ExplVar = zeros(Options.NumComp,1);
-    PCAmodel.ExplVarCum = zeros(Options.NumComp,1);
-    PCAmodel.Eig = ones(Options.NumComp,1);
-    PCAmodel.nIter = ones(Options.NumComp,1);
-    PCAmodel.MaxOrth = ones(Options.NumComp,1);
-    PCAmodel.StopCrit = cell(Options.NumComp,1);
-end
+% Create PCA model structure
+PCAmodel.NumComp = Options.NumComp;
+PCAmodel.T = zeros(N,Options.NumComp);
+PCAmodel.P = zeros(K,Options.NumComp);
+PCAmodel.ExplVar = zeros(Options.NumComp,1);
+PCAmodel.ExplVarCum = zeros(Options.NumComp,1);
+PCAmodel.Eig = ones(Options.NumComp,1);
+PCAmodel.nIter = ones(Options.NumComp,1);
+PCAmodel.MaxOrth = ones(Options.NumComp,1);
+PCAmodel.StopCrit = cell(Options.NumComp,1);
 
 ssx_orig = sum(X.^2,'all'); % Original sum of squares
 if ssx_orig < 1e-10
@@ -150,13 +158,13 @@ if ssx_orig < 1e-10
 end
 
 if strcmp('Comp',Options.Verbose)
-    fprintf('#Comp Iter    Eig   %%Var   %%VarCum ConvValue Orthogonality\n')
+    fprintf('#Comp Iter    Eig  %%Var %%VarCum ConvValue Orthogonality\n')
 elseif strcmp('Iteration',Options.Verbose)
     fprintf('#Comp\tIter\tConv\n')
 end
 
 OneMoreComp = true;
-CurrentComp = false;
+CurrentComp = 0;
 MaxOrth = 1;
 
 while OneMoreComp
@@ -182,21 +190,21 @@ while OneMoreComp
     ConvergenceRatioStop = false;
     MaxOrthStop = false;
     nIncreasedConv = 0;
+    
     while ~Converged
+    
         if isempty(MVX)
             p = X' * t0; % same as p = ((t0' * X))'; no speed difference in MATLAB
         else
-            %p = X' * t0 ./ (t0.^2' * MVX)'; % Adjust for missing values
-            p = (t0' * X ./ (t0.^2' * MVX))';
+            p = (t0' * X ./ (t0.^2' * MVX))';% Adjust for missing values
         end
         
-        p = p / norm(p);
+        p = p / norm(p); % Normalise p to unit length
         
         if isempty(MVX)
             t = X * p;
         else
             t = X * p ./ (MVX * p.^2); % Adjust for missing values
-            %t = X * p ./ (MV.MVX * p.^2);
         end
         
         %Check Convergence
@@ -205,8 +213,9 @@ while OneMoreComp
         
         if CurrentComp > 1
             % Check orthogonality to previous components
-            MaxOrth = max(abs(sum(t.*T(:,1:CurrentComp-1),1)));
+            MaxOrth = max(abs(sum(t .* PCAmodel.T(:,1:CurrentComp-1),1)));
         end
+        
         if nit > 0
             if Conv_Value_t > 0
                 ConvergenceRatio = ConvergnceValue_old/Conv_Value_t;
@@ -231,6 +240,7 @@ while OneMoreComp
         if Conv_Value_t < Options.ConvValue && Conv_Value_p < Options.ConvValue
             ConvergenceValueStop = true;
         end
+        
         if nIncreasedConv > 0
             ConvergenceRatioStop = true;
         end
@@ -245,17 +255,15 @@ while OneMoreComp
         end
     end
     
-    X = X - (t*p'); % Remove compaonent and start over
+    X = X - (t*p'); % Remove component and start over
     if ~isempty(MVX)
         X(~MVX) = 0;
     end
     
-    if nargout > 0
-        T(:,CurrentComp) = t;
-    end
-    if nargout > 1
-        P(:,CurrentComp) = p;
-    end
+    
+    PCAmodel.T(:,CurrentComp) = t;
+    
+    PCAmodel.P(:,CurrentComp) = p;
     ExplVarCum = (ssx_orig - sum(X.^2,'all')) / ssx_orig * 100; % Calculate cumulative explained variation
     
     if CurrentComp == 1
@@ -265,35 +273,30 @@ while OneMoreComp
     end
     ExplVarCum_PrevComp = ExplVarCum;
     Eig = ExplVar * min_N_K / 100; %Calculates the eigen value
-
-    if nargout > 2
-        PCAmodel.ExplVarCum(CurrentComp) = ExplVarCum;
-        
-        PCAmodel.ExplVar(CurrentComp) = ExplVar;
-        
-        PCAmodel.Eig(CurrentComp) = Eig;
-        PCAmodel.nIter(CurrentComp) = nit;
-        PCAmodel.MaxOrth(CurrentComp) = MaxOrth;
-    end
-    fprintf('%4u %5u %8.1f %6.2f %6.2f %8.2g %8.2g\n',CurrentComp,nit,Eig,ExplVar,ExplVarCum,Conv_Value_t,MaxOrth)
+    
+    
+    PCAmodel.ExplVarCum(CurrentComp) = ExplVarCum;
+    
+    PCAmodel.ExplVar(CurrentComp) = ExplVar;
+    
+    PCAmodel.Eig(CurrentComp) = Eig;
+    PCAmodel.nIter(CurrentComp) = nit;
+    PCAmodel.MaxOrth(CurrentComp) = MaxOrth;
+    fprintf('%4u%5u%8.1f%6.2f%6.2f%9.2g%9.2g\n',CurrentComp,nit,Eig,ExplVar,ExplVarCum,Conv_Value_t,MaxOrth)
+    
     if CurrentComp >= Options.NumComp || ExplVarCum >= Options.ExplVarStop
         OneMoreComp = false;
     end
+    
 end
-if nargout > 0
-    T = T(:,1:CurrentComp);
-end
-if nargout > 1
-    P = P(:,1:CurrentComp);
-end
-if nargout > 2
-    PCAmodel.ExplVarCum  = PCAmodel.ExplVarCum(1:CurrentComp);
-    PCAmodel.ExplVar = PCAmodel.ExplVar(1:CurrentComp);
-    PCAmodel.Eig  = PCAmodel.Eig(1:CurrentComp);
-    PCAmodel.nIter = PCAmodel.nIter(1:CurrentComp);
-    PCAmodel.MaxOrth = PCAmodel.MaxOrth(1:CurrentComp);
-end
-
+PCAmodel.NumComp = CurrentComp;
+PCAmodel.T = PCAmodel.T(:,1:CurrentComp);
+PCAmodel.P = PCAmodel.P(:,1:CurrentComp);
+PCAmodel.ExplVarCum  = PCAmodel.ExplVarCum(1:CurrentComp);
+PCAmodel.ExplVar = PCAmodel.ExplVar(1:CurrentComp);
+PCAmodel.Eig  = PCAmodel.Eig(1:CurrentComp);
+PCAmodel.nIter = PCAmodel.nIter(1:CurrentComp);
+PCAmodel.MaxOrth = PCAmodel.MaxOrth(1:CurrentComp);
 
 end
 
@@ -303,15 +306,16 @@ options = inputParser;
 expectedVerbose = {'Comp', 'Iteration', 'None'};
 expectedStopCriteria = {'Bottom', 'ConvValue'};
 expectedTstart = {'Ones', 'MaxVar','Random','First'};
+
 addParameter(options,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
 addParameter(options,'StopCriteria', 'Bottom', @(x) any(validatestring(x,expectedStopCriteria)));
-addParameter(options,'Tstart', 'P', @(x) any(validatestring(x,expectedTstart)));
-addParameter(options,'ScaleX', false, @islogical);
-addParameter(options,'CentreX', true, @islogical);
-addParameter(options,'MVCheck', true, @islogical);
+addParameter(options,'Tstart', 'Ones', @(x) any(validatestring(x,expectedTstart)));
+addParameter(options,'ScaleX', false,  @(x) islogical(x) || x==1 || x==0);
+addParameter(options,'CentreX', true, @(x) islogical(x) || x==1 || x==0);
+addParameter(options,'MVCheck', true, @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'MVTolCol', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
 addParameter(options,'MVTolRow', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
-addParameter(options,'MVAverage', false, @islogical);
+addParameter(options,'MVAverage', false, @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'ConvValue', 1e-14, @(x) isnumeric(x) && isscalar(x));
 addParameter(options,'MaxOrtho', 1e-8, @(x) isnumeric(x) && isscalar(x));
 addParameter(options,'ExplVarStop', 100, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
