@@ -1,7 +1,6 @@
 function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 % NIPALS PCA
 
-
 % Input checking
 if nargin < 1
     error('NIPALS_PCA requires at least a matrix as input');
@@ -11,7 +10,14 @@ if ~ismatrix(X) || ~isnumeric(X) || min(size(X)) < 2
     error('The first input needs to be a NxM matrix with N & M > 1');
 end
 
-if nargin > 1 && isscalar(varargin{1}) && isnumeric(varargin{1})
+if nargin > 2 && isstruct(varargin{2}) && any(strcmpi('AddComp',varargin))
+    NumComp = varargin{1};
+    PCAmodel = varargin{2};
+    Options = parseArguments(varargin{3:end});
+    Options.CentreX = false;
+    Options.ScaleX = false;
+    Options.NumComp = NumComp;
+elseif nargin > 1 && isscalar(varargin{1}) && isnumeric(varargin{1})
     if varargin{1} >= 1
         NumComp = varargin{1};
         Options = parseArguments(varargin{2:end});
@@ -23,12 +29,12 @@ if nargin > 1 && isscalar(varargin{1}) && isnumeric(varargin{1})
     else
         error('The second argumnet need to be a integer for NumComp or 0-1 for explained variation stop');
     end
-else
+    
+    else
     Options = parseArguments(varargin{:});
 end
 
 % Check for Missing values
-
 MVX=[];
 [N,K] = size(X);
 if Options.MVCheck
@@ -142,18 +148,36 @@ if ~strcmpi('none',Options.Verbose)
 end
 
 % Create PCA model structure
-PCAmodel.NumComp = Options.NumComp;
-PCAmodel.T = zeros(N,Options.NumComp);
-PCAmodel.P = zeros(K,Options.NumComp);
-PCAmodel.ExplVar = zeros(Options.NumComp,1);
-PCAmodel.ExplVarCum = zeros(Options.NumComp,1);
-PCAmodel.Eig = ones(Options.NumComp,1);
-PCAmodel.nIter = ones(Options.NumComp,1);
-PCAmodel.MaxOrth = ones(Options.NumComp,1);
-PCAmodel.StopCrit = cell(Options.NumComp,1);
+if Options.AddComp
+    CurrentComp =  PCAmodel.NumComp + Options.NumComp;
+    ExplVarCum_PrevComp = PCAmodel.ExplVarCum(end);
+    PCAmodel.NumComp = PCAmodel.NumComp + Options.NumComp;
+    PCAmodel.T = [PCAmodel.T zeros(N,Options.NumComp)];
+    PCAmodel.P = zeros(K,Options.NumComp);
+    PCAmodel.ExplVar = zeros(Options.NumComp,1);
+    PCAmodel.ExplVarCum = zeros(Options.NumComp,1);
+    PCAmodel.Eig = ones(Options.NumComp,1);
+    PCAmodel.nIter = ones(Options.NumComp,1);
+    PCAmodel.MaxOrth = ones(Options.NumComp,1);
+    PCAmodel.StopCrit = cell(Options.NumComp,1);
+    
 
-ssx_orig = sum(X.^2,'all'); % Original sum of squares
-if ssx_orig < 1e-10
+else
+    CurrentComp = 0;
+    PCAmodel.NumComp = Options.NumComp;
+    PCAmodel.T = zeros(N,Options.NumComp);
+    PCAmodel.P = zeros(K,Options.NumComp);
+    PCAmodel.ExplVar = zeros(Options.NumComp,1);
+    PCAmodel.ExplVarCum = zeros(Options.NumComp,1);
+    PCAmodel.Eig = ones(Options.NumComp,1);
+    PCAmodel.nIter = ones(Options.NumComp,1);
+    PCAmodel.MaxOrth = ones(Options.NumComp,1);
+    PCAmodel.StopCrit = cell(Options.NumComp,1);
+    PCAmodel.ssx_orig = sum(X.^2,'all'); % Original sum of squares
+end
+
+
+if PCAmodel.ssx_orig < 1e-10
     error('X has close to zero variance');
 end
 
@@ -164,7 +188,7 @@ elseif strcmp('Iteration',Options.Verbose)
 end
 
 OneMoreComp = true;
-CurrentComp = 0;
+
 MaxOrth = 1;
 
 while OneMoreComp
@@ -192,7 +216,7 @@ while OneMoreComp
     nIncreasedConv = 0;
     
     while ~Converged
-    
+        
         if isempty(MVX)
             p = X' * t0; % same as p = ((t0' * X))'; no speed difference in MATLAB
         else
@@ -264,13 +288,14 @@ while OneMoreComp
     PCAmodel.T(:,CurrentComp) = t;
     
     PCAmodel.P(:,CurrentComp) = p;
-    ExplVarCum = (ssx_orig - sum(X.^2,'all')) / ssx_orig * 100; % Calculate cumulative explained variation
+    ExplVarCum = (PCAmodel.ssx_orig - sum(X.^2,'all')) / PCAmodel.ssx_orig * 100; % Calculate cumulative explained variation
     
     if CurrentComp == 1
         ExplVar = ExplVarCum;
     else
         ExplVar = ExplVarCum - ExplVarCum_PrevComp;
     end
+    
     ExplVarCum_PrevComp = ExplVarCum;
     Eig = ExplVar * min_N_K / 100; %Calculates the eigen value
     
@@ -308,6 +333,7 @@ expectedStopCriteria = {'Bottom', 'ConvValue'};
 expectedTstart = {'Ones', 'MaxVar','Random','First'};
 
 addParameter(options,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
+addParameter(options,'AddComp', false,  @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'StopCriteria', 'Bottom', @(x) any(validatestring(x,expectedStopCriteria)));
 addParameter(options,'Tstart', 'Ones', @(x) any(validatestring(x,expectedTstart)));
 addParameter(options,'ScaleX', false,  @(x) islogical(x) || x==1 || x==0);
