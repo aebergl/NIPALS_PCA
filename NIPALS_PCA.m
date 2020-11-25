@@ -10,13 +10,25 @@ if ~ismatrix(X) || ~isnumeric(X) || min(size(X)) < 2
     error('The first input needs to be a NxM matrix with N & M > 1');
 end
 
-if nargin > 2 && isstruct(varargin{2}) && any(strcmpi('AddComp',varargin))
+if nargin > 2 && any(strcmpi('AddComp',varargin))
     NumComp = varargin{1};
     PCAmodel = varargin{2};
-    Options = parseArguments(varargin{3:end});
+    if varargin{1} >= 1
+        NumComp = varargin{1};
+        Options = parseArguments(varargin{2:end});
+        Options.NumComp = NumComp;
+    elseif varargin{1} > 0 && varargin{1} < 1
+        ExplVarStop = varargin{1} * 100;
+        Options = parseArguments(varargin{2:end});
+        Options.ExplVarStop = ExplVarStop;
+    else
+        error('The second argumnet need to be a integer for NumComp or 0-1 for explained variation stop');
+    end
+    PCAmodel=Options.AddComp;
+    Options.AddComp = true;
     Options.CentreX = false;
-    Options.ScaleX = false;
-    Options.NumComp = NumComp;
+    Options.ScaleX = false;    
+    
 elseif nargin > 1 && isscalar(varargin{1}) && isnumeric(varargin{1})
     if varargin{1} >= 1
         NumComp = varargin{1};
@@ -50,21 +62,21 @@ if Options.MVCheck
     else
         % check for colums with too many missing values
         mv_col = sum(MVX,1);
-        col_rem = find(mv_col / N * 100 > Options.MVTolCol);
-        if length(col_rem) >= 1
-            X(:,col_rem) = []; %Remove column with too many mv's
-            MVX(:,col_rem) = [];
-            mv_col(col_rem) = [];
+        PCAmodel.col_rem = mv_col / N * 100 > Options.MVTolCol;
+        if any(col_rem) >= 1
+            X(:,PCAmodel.col_rem) = []; %Remove column with too many mv's
+            MVX(:,PCAmodel.col_rem) = [];
+            mv_col(PCAmodel.col_rem) = [];
             disp (' ')
             fprintf('%u columns removed with more than %u %% missing values\n',length(col_rem),Options.MVTolCol);
         end
         % check for rows with too many missing values
         mv_row = sum(MVX,2);
-        row_rem = find(mv_row / K * 100 > Options.MVTolRow);
-        if length(row_rem) >= 1
-            X(row_rem,:) = []; %Remove rows with to many mv's
-            MVX(row_rem,:) = [];
-            mv_row(row_rem) = [];
+        PCAmodel.row_rem = mv_row / K * 100 > Options.MVTolRow;
+        if any(PCAmodel.row_rem) >= 1
+            X(PCAmodel.row_rem,:) = []; %Remove rows with to many mv's
+            MVX(PCAmodel.row_rem,:) = [];
+            mv_row(PCAmodel.row_rem) = [];
             disp (' ')
             fprintf('%u rows removed with more than %u %% missing values\n',length(row_rem),Options.MVTolRow);
             mv_col = sum(MVX); %Checks again
@@ -125,7 +137,7 @@ if Options.ScaleX == 1
     end
 end
 
-if Options.MVAverage % Use zeros instaed of MVs, same as replacing MVs with mean
+if Options.MVAverage % Use zeros instaed of MVs, same as replacing MVs with column mean
     MVX = [];
 end
 
@@ -149,7 +161,7 @@ end
 
 % Create PCA model structure
 if Options.AddComp
-    CurrentComp =  PCAmodel.NumComp + Options.NumComp;
+    CurrentComp =  PCAmodel.NumComp;
     ExplVarCum_PrevComp = PCAmodel.ExplVarCum(end);
     PCAmodel.NumComp = PCAmodel.NumComp + Options.NumComp;
     PCAmodel.T = [PCAmodel.T zeros(N,Options.NumComp)];
@@ -160,8 +172,7 @@ if Options.AddComp
     PCAmodel.nIter = ones(Options.NumComp,1);
     PCAmodel.MaxOrth = ones(Options.NumComp,1);
     PCAmodel.StopCrit = cell(Options.NumComp,1);
-    
-
+   
 else
     CurrentComp = 0;
     PCAmodel.NumComp = Options.NumComp;
@@ -188,7 +199,6 @@ elseif strcmp('Iteration',Options.Verbose)
 end
 
 OneMoreComp = true;
-
 MaxOrth = 1;
 
 while OneMoreComp
@@ -283,10 +293,25 @@ while OneMoreComp
     if ~isempty(MVX)
         X(~MVX) = 0;
     end
+    % Calculate DModX
+    if isempty(MVX)
+        [S1]= sqrt(((sum((X.*X)'))) / (K-a));
+    else
+        [S1]= sqrt(((sum((X.*X)'))) ./ (MV.mv_row-a)');
+    end
+
+    v=sqrt(N/(N-a-1));
+    S1=S1 * v;
+    if isempty(MVX)
+        df = ((N-a-1)*(K-a));
+    else
+        df=((N-a-1)*(K-a))-sum(K-MV.mv_row);
+    end
+       
+    S0=sqrt(sum(sum(X.^2)) / df);
+    PCAmodel.DmodX(:,a) =  S1/S0;
     
-    
-    PCAmodel.T(:,CurrentComp) = t;
-    
+    PCAmodel.T(:,CurrentComp) = t;    
     PCAmodel.P(:,CurrentComp) = p;
     ExplVarCum = (PCAmodel.ssx_orig - sum(X.^2,'all')) / PCAmodel.ssx_orig * 100; % Calculate cumulative explained variation
     
@@ -298,12 +323,9 @@ while OneMoreComp
     
     ExplVarCum_PrevComp = ExplVarCum;
     Eig = ExplVar * min_N_K / 100; %Calculates the eigen value
-    
-    
-    PCAmodel.ExplVarCum(CurrentComp) = ExplVarCum;
-    
-    PCAmodel.ExplVar(CurrentComp) = ExplVar;
-    
+       
+    PCAmodel.ExplVarCum(CurrentComp) = ExplVarCum;    
+    PCAmodel.ExplVar(CurrentComp) = ExplVar;    
     PCAmodel.Eig(CurrentComp) = Eig;
     PCAmodel.nIter(CurrentComp) = nit;
     PCAmodel.MaxOrth(CurrentComp) = MaxOrth;
@@ -333,7 +355,7 @@ expectedStopCriteria = {'Bottom', 'ConvValue'};
 expectedTstart = {'Ones', 'MaxVar','Random','First'};
 
 addParameter(options,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
-addParameter(options,'AddComp', false,  @(x) islogical(x) || x==1 || x==0);
+addParameter(options,'AddComp', [],  @(x) isstruct(x) );
 addParameter(options,'StopCriteria', 'Bottom', @(x) any(validatestring(x,expectedStopCriteria)));
 addParameter(options,'Tstart', 'Ones', @(x) any(validatestring(x,expectedTstart)));
 addParameter(options,'ScaleX', false,  @(x) islogical(x) || x==1 || x==0);
