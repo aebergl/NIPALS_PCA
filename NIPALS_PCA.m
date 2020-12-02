@@ -1,5 +1,6 @@
 function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 % NIPALS_PCA PCA calculation using NIPALS algorithm, handles missing values
+% 
 %
 
 % Input checking
@@ -11,7 +12,7 @@ if ~ismatrix(X) || ~isnumeric(X) || min(size(X)) < 2
     error('The first input needs to be a NxM matrix with N & M > 1');
 end
 
-if nargin > 2 && any(strcmpi('AddComp',varargin))
+if nargin > 2 && any(strcmpi('AddComp',varargin)) % Add more components 
     if varargin{1} >= 1
         NumComp = varargin{1};
         options = parseArguments(varargin{2:end});
@@ -27,8 +28,7 @@ if nargin > 2 && any(strcmpi('AddComp',varargin))
     options.AddComp = true;
     options.CentreX = false;
     options.ScaleX = false;    
-    
-elseif nargin > 1 && isscalar(varargin{1}) && isnumeric(varargin{1})
+elseif nargin > 1 && isscalar(varargin{1}) && isnumeric(varargin{1}) % Second argument used for deciding number of components
     if varargin{1} >= 1
         NumComp = varargin{1};
         options = parseArguments(varargin{2:end});
@@ -40,8 +40,7 @@ elseif nargin > 1 && isscalar(varargin{1}) && isnumeric(varargin{1})
     else
         error('The second argumnet need to be a integer for NumComp or 0-1 for explained variation stop');
     end
-    
-    else
+else
     options = parseArguments(varargin{:});
 end
 
@@ -191,12 +190,14 @@ if PCAmodel.ssx_orig < 1e-10
 end
 
 if strcmp('Comp',options.Verbose)
+    fprintf('\n')
     fprintf('Number of rows: %i\t Number of columns: %i\n',N,K);
     HeadingNames = {'#Comp','Iter','EigVal','%Var','%VarCum','ConvValue','Orthogonality'};
-    %fprintf('%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n',HeadingNames{:});
-     fprintf('%5s %5s %8s %6s %6s %9s %13s\n',HeadingNames{:})
-    %fprintf('#Comp Iter    Eig  %%Var %%VarCum ConvValue Orthogonality\n')
-elseif strcmp('Iteration',options.Verbose)
+    fprintf('%5s %5s %8s %6s %6s %9s %13s\n',HeadingNames{:})
+end
+if strcmp('Iteration',options.Verbose)
+    fprintf('\n')
+
     fprintf('#Comp\tIter\tConv\n')
 end
 
