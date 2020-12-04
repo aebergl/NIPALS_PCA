@@ -1,7 +1,58 @@
 function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 % NIPALS_PCA PCA calculation using NIPALS algorithm, handles missing values
-% 
 %
+% USAGE:
+%
+% PCA_model = NIPALS_PCA(X) Calculates 10 componentsand returns the PCA_model structure
+% PCA_model = NIPALS_PCA(X, A) If A=integer A components are caulculated
+% PCA_model = NIPALS_PCA(X, A) If 0<A<1 calculates enough components to explain A percent of the variation in X
+% PCA_model = PCA_model(...,Name,Value) specifies options using one or more Name,Value pair arguments.
+% [PCA_model, E] = PCA_model(X,A) also returns the residual matrix E
+%
+% INPUTS:
+% * X is a N*K matrix which may contain missing values (MV)
+%
+% OUTPUTS:
+% * PCA_Model: PCA_model structure with the following fields
+%    col_rem: [] columns that have been removed with too many MVs
+%    row_rem: [] rows that have been removed with too many MVs
+%     x_mean: [1×K] vector with column mean
+%   x_weight: [1xK] vector with scaling value for each column [] if no scaling
+%    NumComp: A number of PCA components
+%          T: [N×A] matrix with scores
+%          P: [KxA] matric with loadings
+%    ExplVar: [A×1 double]
+% ExplVarCum: [A×1 double]
+%        Eig: [A×1 double]
+%      nIter: [A×1 double]
+%    MaxOrth: [A×1 double]
+%   StopCrit: {5×1 cell}
+%   ssx_orig: 2.4417e+07
+%      DmodX: [1000×5 double]
+%
+% OTHER PARAMETERS passed as parameter-value pairs, defaults in []
+% 'MarkerType': Marker type '.od<>^vs+*xph' ['.']
+% 'mSize': Integer for Marker size [50 for '.' otherwise 12]
+% 'ColorMap': Colormap to be used name eg 'jet' or N*3 matrix [TurboMap]
+% 'logDensity': true/false for taking the log10 of the density [true]
+% 'AxisSquare': true/false for making axis square [true]
+% 'SmoothDensity': true/false for density smoothing [true]
+% 'lambda':  Integer for the degree of smoothing [30]
+% 'nBin_x': Integer for number of bins along the x-axis [200]
+% 'nBin_y': Integer for number of bins along the y-axis [200]
+% 'RemovePoints': true/false only plot points that that are unique based
+%                 on a 1000*1000 grid [true]
+% 'TargetAxes': Axes handle to existing axes that will be used [false]
+% 'ColorBar': true/false creates a color bar for the density [true]
+% 'MaxDens': double for thresholding density D(D>MaxDens) = MaxDens [inf]
+% 'PointsToExclude': Nx2 matrix describing points to be exluded for example
+% [0 0] may be useful for RNAseq data [ [] ]
+%
+
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% by Anders Berglund, 2020 aebergl@gmail.com                            %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Input checking
 if nargin < 1
@@ -12,7 +63,7 @@ if ~ismatrix(X) || ~isnumeric(X) || min(size(X)) < 2
     error('The first input needs to be a NxM matrix with N & M > 1');
 end
 
-if nargin > 2 && any(strcmpi('AddComp',varargin)) % Add more components 
+if nargin > 2 && any(strcmpi('AddComp',varargin)) % Add more components to an existing PCA model
     if varargin{1} >= 1
         NumComp = varargin{1};
         options = parseArguments(varargin{2:end});
@@ -27,7 +78,7 @@ if nargin > 2 && any(strcmpi('AddComp',varargin)) % Add more components
     PCAmodel=options.AddComp;
     options.AddComp = true;
     options.CentreX = false;
-    options.ScaleX = false;    
+    options.ScaleX = false;
 elseif nargin > 1 && isscalar(varargin{1}) && isnumeric(varargin{1}) % Second argument used for deciding number of components
     if varargin{1} >= 1
         NumComp = varargin{1};
@@ -47,6 +98,8 @@ end
 % Check for Missing values
 MVX=[];
 [N,K] = size(X);
+PCAmodel.col_rem = [];
+PCAmodel.row_rem = [];
 if options.MVCheck
     if options.Verbose
         fprintf('\n')
@@ -87,6 +140,7 @@ end
 
 min_N_K = min([N,K]);
 % Remove mean
+PCAmodel.x_mean = [];
 if options.CentreX == 1
     
     if options.Verbose
@@ -109,6 +163,7 @@ if options.CentreX == 1
 end
 
 % Scale each variable to unit variance
+PCAmodel.x_weight = [];
 if options.ScaleX == 1
     
     if options.Verbose
@@ -150,7 +205,7 @@ if options.NumComp > min_N_K
 end
 
 % Initiate PCA calculations
-if ~strcmpi('none',options.Verbose)
+if options.Verbose
     fprintf('\n')
     fprintf('Initiate PCA calculations....\n')
 end
@@ -169,7 +224,7 @@ if options.AddComp % Adding to the old PCA models
     PCAmodel.nIter = ones(options.NumComp,1);
     PCAmodel.MaxOrth = ones(options.NumComp,1);
     PCAmodel.StopCrit = cell(options.NumComp,1);
-   
+    
 else % Create a new PCA model scructure
     CurrentComp = 0;
     PCAmodel.NumComp = options.NumComp;
@@ -189,7 +244,7 @@ if PCAmodel.ssx_orig < 1e-10
     error('X has close to zero variance');
 end
 
-if strcmp('Comp',options.Verbose)
+if options.Verbose
     fprintf('\n')
     fprintf('Number of rows: %i\t Number of columns: %i\n',N,K);
     HeadingNames = {'#Comp','Iter','EigVal','%Var','%VarCum','ConvValue','Orthogonality'};
@@ -197,32 +252,39 @@ if strcmp('Comp',options.Verbose)
 end
 if strcmp('Iteration',options.Verbose)
     fprintf('\n')
-
+    
     fprintf('#Comp\tIter\tConv\n')
 end
 
 OneMoreComp = true;
 MaxOrth = NaN;
-
 % Start PCA calculations, one PCA component at the time
 while OneMoreComp
     CurrentComp = CurrentComp + 1;
-
+    
     p0 = ones(K,1) ./ sqrt(K);
     
-    % How to pich starting vector
-    switch options.Tstart
-        case 'Ones'
-            t0 = X * p0; % Ensures no sign flipping and that changes in number of variables or samples give the same sign
-        case 'MaxVar'
-            [~,indx] = max(sum(X.^2)); %Start with x-variable which has the largest variance
-            t0 = X(:,indx);
-        case 'Random' % Why?
-            t0 =  X(:,randi(K));
-        case 'First'
-            t0 =  X(:,1); % Not recomended but sometimes used
+    % How to pick starting vector
+    if ismatrix(options.Tstart) && isnumeric(options.Tstart)
+        if size(options.Tstart,2) >= CurrentComp
+            t0 = options.Tstart(:,CurrentComp);
+        else
+            options.Tstart = 'Ones';
+        end
+    else
+        
+        switch lower(options.Tstart)
+            case 'ones'
+                t0 = X * p0; % Ensures no sign flipping and that changes in number of variables or samples give the same sign
+            case 'maxvar'
+                [~,indx] = max(sum(X.^2)); %Start with x-variable which has the largest variance
+                t0 = X(:,indx);
+            case 'random' % Why?
+                t0 =  X(:,randi(K));
+            case 'first'
+                t0 =  X(:,1); % Not recomended but sometimes used
+        end
     end
-    
     nit=0;
     Converged = false;
     MaxIterStop = false;
@@ -231,11 +293,11 @@ while OneMoreComp
     %MaxOrthStop = false;
     nIncreasedConv = 0;
     
-   
+    
     while ~Converged  % Iterate until convergence
         
         % Calculate Loadings
-        if isempty(MVX) 
+        if isempty(MVX)
             p = X' * t0; % same as p = ((t0' * X))'; no speed difference in MATLAB
         else
             p = (t0' * X ./ (t0.^2' * MVX))';% Adjust for missing values
@@ -250,18 +312,19 @@ while OneMoreComp
             t = X * p ./ (MVX * p.^2); % Adjust for missing values
         end
         
-        %Check Convergence
+        %Check Convergence for both t and p
         Conv_Value_t = sum((t-t0).^2);
         Conv_Value_p = sum((p-p0).^2);
         
         if CurrentComp > 1
-            % Check orthogonality to previous components
+            % Check orthogonality to previous components, returns the
+            % largest value
             MaxOrth = max(abs(sum(t .* PCAmodel.T(:,1:CurrentComp-1),1)));
         end
         
         if nit > 0
-            if Conv_Value_t > 0
-                ConvergenceRatio = ConvergnceValue_old/Conv_Value_t;
+            if Conv_Value_t > 0 % Compares the rate of cenvergence
+                ConvergenceRatio = ConvergenceValue_old/Conv_Value_t;
             end
         else
             ConvergenceRatio = NaN;
@@ -271,6 +334,7 @@ while OneMoreComp
             fprintf('%u\t%u\t%g\t%g\t%g\n',CurrentComp,nit,Conv_Value_t,ConvergenceRatio,MaxOrth)
         end
         
+        % Check if bottom is reached
         if ConvergenceRatio <= 1 && Conv_Value_t < options.ConvValue
             nIncreasedConv = nIncreasedConv + 1;
         end
@@ -284,9 +348,10 @@ while OneMoreComp
             ConvergenceValueStop = true;
         end
         
-        if nIncreasedConv > 0
+        if nIncreasedConv > 5
             ConvergenceRatioStop = true;
         end
+        
         
         if MaxIterStop || (ConvergenceValueStop && ConvergenceRatioStop) || Conv_Value_t == 0
             Converged = true;
@@ -294,7 +359,7 @@ while OneMoreComp
             t0 = t;
             p0 = p;
             nit = nit + 1;
-            ConvergnceValue_old = Conv_Value_t;
+            ConvergenceValue_old = Conv_Value_t;
         end
     end
     
@@ -306,7 +371,7 @@ while OneMoreComp
     % Calculate sum of squares once and only once
     sumSquaresRow = sum(X.^2,2);
     sumSquares = sum(sumSquaresRow);
-   
+    
     % Calculate DModX
     if isempty(MVX)
         [S1]= sqrt(sumSquaresRow / (K-CurrentComp));
@@ -320,12 +385,9 @@ while OneMoreComp
     else
         df=((N-CurrentComp-1)*(K-CurrentComp))-sum(K-mv_row);
     end
-       
     S0=sqrt(sumSquares / df);
-    PCAmodel.DmodX(:,CurrentComp) =  S1/S0;
     
-    PCAmodel.T(:,CurrentComp) = t;    
-    PCAmodel.P(:,CurrentComp) = p;
+    % Calculate explained variation
     ExplVarCum = (PCAmodel.ssx_orig - sumSquares) / PCAmodel.ssx_orig * 100; % Calculate cumulative explained variation
     
     if CurrentComp == 1
@@ -333,22 +395,28 @@ while OneMoreComp
     else
         ExplVar = ExplVarCum - ExplVarCum_PrevComp;
     end
-    
     ExplVarCum_PrevComp = ExplVarCum;
     Eig = ExplVar * min_N_K / 100; %Calculates the eigen value
-       
-    PCAmodel.ExplVarCum(CurrentComp) = ExplVarCum;    
-    PCAmodel.ExplVar(CurrentComp) = ExplVar;    
+    
+    % Save PCA component results
+    PCAmodel.DmodX(:,CurrentComp) =  S1/S0;
+    PCAmodel.T(:,CurrentComp) = t;
+    PCAmodel.P(:,CurrentComp) = p;
+    PCAmodel.ExplVarCum(CurrentComp) = ExplVarCum;
+    PCAmodel.ExplVar(CurrentComp) = ExplVar;
     PCAmodel.Eig(CurrentComp) = Eig;
     PCAmodel.nIter(CurrentComp) = nit;
     PCAmodel.MaxOrth(CurrentComp) = MaxOrth;
-    fprintf('%5u %5u %8.2f %6.2f %7.2f %9.2g %13.2g\n',CurrentComp,nit,Eig,ExplVar,ExplVarCum,Conv_Value_t,MaxOrth)
-    
+    if options.Verbose
+        fprintf('%5u %5u %8.2f %6.2f %7.2f %9.2g %13.2g\n',CurrentComp,nit,Eig,ExplVar,ExplVarCum,Conv_Value_t,MaxOrth)
+    end
+    % Are we done with all components?
     if CurrentComp >= options.NumComp || ExplVarCum >= options.ExplVarStop
         OneMoreComp = false;
     end
     
 end
+% Only keep the PCA components we calculated
 PCAmodel.NumComp = CurrentComp;
 PCAmodel.T = PCAmodel.T(:,1:CurrentComp);
 PCAmodel.P = PCAmodel.P(:,1:CurrentComp);
@@ -364,12 +432,12 @@ end
 function options = parseArguments(varargin)
 options = inputParser;
 
-expectedVerbose = {'Comp', 'Iteration', 'None'};
+expectedVerbose = {'Component', 'Iteration', 'None'};
 expectedTstart = {'Ones', 'MaxVar','Random','First'};
 
 addParameter(options,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
 addParameter(options,'AddComp', [],  @(x) isstruct(x) );
-addParameter(options,'Tstart', 'Ones', @(x) any(validatestring(x,expectedTstart)));
+addParameter(options,'Tstart', 'Ones', @(x) ismatrix(x) || any(validatestring(x,expectedTstart)));
 addParameter(options,'ScaleX', false,  @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'CentreX', true, @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'MVCheck', true, @(x) islogical(x) || x==1 || x==0);
@@ -381,9 +449,14 @@ addParameter(options,'MaxOrtho', 1e-8, @(x) isnumeric(x) && isscalar(x));
 addParameter(options,'ExplVarStop', 100, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
 addParameter(options,'MaxComp', 100, @(x) isnumeric(x) && isscalar(x) && x>0);
 addParameter(options,'MaxIter', 1000, @(x) isnumeric(x) && isscalar(x) && x>0);
-addParameter(options,'Verbose', 'Comp', @(x) any(validatestring(x,expectedVerbose)));
+addParameter(options,'Verbose', 'Component', @(x) islogical(x) || any(validatestring(x,expectedVerbose)));
 parse(options,varargin{:});
 options = options.Results;
+
+if strcmpi('none',options.Verbose)
+    options.Verbose = false;
+end
+
 end
 
 
