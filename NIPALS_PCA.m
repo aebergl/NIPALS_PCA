@@ -14,41 +14,55 @@ function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 %
 % OUTPUTS:
 % * PCA_Model: PCA_model structure with the following fields
-%    col_rem: [] columns that have been removed with too many MVs
-%    row_rem: [] rows that have been removed with too many MVs
+%    col_rem: [] vector with columns that have been removed with too many MVs
+%    row_rem: [] vector with rows that have been removed with too many MVs
 %     x_mean: [1×K] vector with column mean
 %   x_weight: [1xK] vector with scaling value for each column [] if no scaling
 %    NumComp: A number of PCA components
 %          T: [N×A] matrix with scores
 %          P: [KxA] matric with loadings
-%    ExplVar: [A×1 double]
-% ExplVarCum: [A×1 double]
-%        Eig: [A×1 double]
-%      nIter: [A×1 double]
-%    MaxOrth: [A×1 double]
-%   StopCrit: {5×1 cell}
-%   ssx_orig: 2.4417e+07
-%      DmodX: [1000×5 double]
+%    ExplVar: [A×1] vector with explained variance for each component in percent
+% ExplVarCum: [A×1] vector with cumulative explained variance for each component in percent
+%        Eig: [A×1] vector with eigenvalue for each component in percent
+%      nIter: [A×1] vector with number of itereation used for each component
+%    MaxOrth: [A×1] vectore with the ortogonality to previous components
+%   ssx_orig: Original sum of squares
+%      DmodX: [N×A] matrix with distance to model for each sample
 %
 % OTHER PARAMETERS passed as parameter-value pairs, defaults in []
-% 'MarkerType': Marker type '.od<>^vs+*xph' ['.']
-% 'mSize': Integer for Marker size [50 for '.' otherwise 12]
-% 'ColorMap': Colormap to be used name eg 'jet' or N*3 matrix [TurboMap]
-% 'logDensity': true/false for taking the log10 of the density [true]
-% 'AxisSquare': true/false for making axis square [true]
-% 'SmoothDensity': true/false for density smoothing [true]
-% 'lambda':  Integer for the degree of smoothing [30]
-% 'nBin_x': Integer for number of bins along the x-axis [200]
-% 'nBin_y': Integer for number of bins along the y-axis [200]
-% 'RemovePoints': true/false only plot points that that are unique based
+% 'NumComp': Integer with number of components to use [10]
+% 'AddComp': PCA model, Adds components to an existing PCA model
+% 'Tstart': Starting vector for NIPALS algorithm [Ones]
+% 'ScaleX': true/false for taking the log10 of the density [true]
+% 'CentreX': true/false for making axis square [true]
+% 'MVCheck': true/false for density smoothing [true]
+% 'MVTolCol':  Integer for the degree of smoothing [30]
+% 'MVTolRow': Integer for number of bins along the x-axis [200]
+% 'MVAverage': Integer for number of bins along the y-axis [200]
+% 'ConvValue': true/false only plot points that that are unique based
 %                 on a 1000*1000 grid [true]
-% 'TargetAxes': Axes handle to existing axes that will be used [false]
-% 'ColorBar': true/false creates a color bar for the density [true]
-% 'MaxDens': double for thresholding density D(D>MaxDens) = MaxDens [inf]
-% 'PointsToExclude': Nx2 matrix describing points to be exluded for example
+% 'MaxOrtho': Axes handle to existing axes that will be used [false]
+% 'ExplVarStop': true/false creates a color bar for the density [true]
+% 'MaxComp': double for thresholding density D(D>MaxDens) = MaxDens [inf]
+% 'MaxIter': Nx2 matrix describing points to be exluded for example
+% 'Verbose': Nx2 matrix describing points to be exluded for example
 % [0 0] may be useful for RNAseq data [ [] ]
 %
-
+addParameter(options,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
+addParameter(options,'AddComp', [],  @(x) isstruct(x) );
+addParameter(options,'Tstart', 'Ones', @(x) ismatrix(x) || any(validatestring(x,expectedTstart)));
+addParameter(options,'ScaleX', false,  @(x) islogical(x) || x==1 || x==0);
+addParameter(options,'CentreX', true, @(x) islogical(x) || x==1 || x==0);
+addParameter(options,'MVCheck', true, @(x) islogical(x) || x==1 || x==0);
+addParameter(options,'MVTolCol', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
+addParameter(options,'MVTolRow', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
+addParameter(options,'MVAverage', false, @(x) islogical(x) || x==1 || x==0);
+addParameter(options,'ConvValue', 1e-14, @(x) isnumeric(x) && isscalar(x));
+addParameter(options,'MaxOrtho', 1e-8, @(x) isnumeric(x) && isscalar(x));
+addParameter(options,'ExplVarStop', 100, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
+addParameter(options,'MaxComp', 100, @(x) isnumeric(x) && isscalar(x) && x>0);
+addParameter(options,'MaxIter', 1000, @(x) isnumeric(x) && isscalar(x) && x>0);
+addParameter(options,'Verbose', 'Component', @(x) islogical(x) || any(validatestring(x,expectedVerbose)));
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% by Anders Berglund, 2020 aebergl@gmail.com                            %
@@ -223,7 +237,6 @@ if options.AddComp % Adding to the old PCA models
     PCAmodel.Eig = ones(options.NumComp,1);
     PCAmodel.nIter = ones(options.NumComp,1);
     PCAmodel.MaxOrth = ones(options.NumComp,1);
-    PCAmodel.StopCrit = cell(options.NumComp,1);
     
 else % Create a new PCA model scructure
     CurrentComp = 0;
@@ -235,7 +248,6 @@ else % Create a new PCA model scructure
     PCAmodel.Eig = ones(options.NumComp,1);
     PCAmodel.nIter = ones(options.NumComp,1);
     PCAmodel.MaxOrth = ones(options.NumComp,1);
-    PCAmodel.StopCrit = cell(options.NumComp,1);
     PCAmodel.ssx_orig = sum(X.^2,'all'); % Original sum of squares
 end
 
@@ -291,8 +303,8 @@ while OneMoreComp
     ConvergenceValueStop = false;
     ConvergenceRatioStop = false;
     %MaxOrthStop = false;
-    nIncreasedConv = 0;
-    
+    nIncreaseFlips = 0;
+    IncreaseTrend = 0;
     
     while ~Converged  % Iterate until convergence
         
@@ -334,9 +346,13 @@ while OneMoreComp
             fprintf('%u\t%u\t%g\t%g\t%g\n',CurrentComp,nit,Conv_Value_t,ConvergenceRatio,MaxOrth)
         end
         
-        % Check if bottom is reached
-        if ConvergenceRatio <= 1 && Conv_Value_t < options.ConvValue
-            nIncreasedConv = nIncreasedConv + 1;
+        if ConvergenceRatio <= 1 && IncreaseTrend == 0 % If the true bottom is reached the ration flips between >1 to <1
+            nIncreaseFlips = nIncreaseFlips + 1;
+            IncreaseTrend = 1;
+        end
+        
+        if ConvergenceRatio > 1 
+            IncreaseTrend = 0;
         end
         
         % Check individual stopping criteria
@@ -348,7 +364,7 @@ while OneMoreComp
             ConvergenceValueStop = true;
         end
         
-        if nIncreasedConv > 5
+        if nIncreaseFlips >= 3
             ConvergenceRatioStop = true;
         end
         
