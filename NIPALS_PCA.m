@@ -48,21 +48,6 @@ function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 % 'Verbose': Nx2 matrix describing points to be exluded for example
 % [0 0] may be useful for RNAseq data [ [] ]
 %
-addParameter(options,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
-addParameter(options,'AddComp', [],  @(x) isstruct(x) );
-addParameter(options,'Tstart', 'Ones', @(x) ismatrix(x) || any(validatestring(x,expectedTstart)));
-addParameter(options,'ScaleX', false,  @(x) islogical(x) || x==1 || x==0);
-addParameter(options,'CentreX', true, @(x) islogical(x) || x==1 || x==0);
-addParameter(options,'MVCheck', true, @(x) islogical(x) || x==1 || x==0);
-addParameter(options,'MVTolCol', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
-addParameter(options,'MVTolRow', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
-addParameter(options,'MVAverage', false, @(x) islogical(x) || x==1 || x==0);
-addParameter(options,'ConvValue', 1e-14, @(x) isnumeric(x) && isscalar(x));
-addParameter(options,'MaxOrtho', 1e-8, @(x) isnumeric(x) && isscalar(x));
-addParameter(options,'ExplVarStop', 100, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
-addParameter(options,'MaxComp', 100, @(x) isnumeric(x) && isscalar(x) && x>0);
-addParameter(options,'MaxIter', 1000, @(x) isnumeric(x) && isscalar(x) && x>0);
-addParameter(options,'Verbose', 'Component', @(x) islogical(x) || any(validatestring(x,expectedVerbose)));
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% by Anders Berglund, 2020 aebergl@gmail.com                            %
