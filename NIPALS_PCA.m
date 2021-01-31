@@ -5,7 +5,7 @@ function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 %
 % PCA_model = NIPALS_PCA(X) Calculates 10 componentsand returns the PCA_model structure
 % PCA_model = NIPALS_PCA(X, A) If A=integer A components are caulculated
-% PCA_model = NIPALS_PCA(X, A) If 0<A<1 calculates enough components to explain A percent of the variation in X
+% PCA_model = NIPALS_PCA(X, A) If 0<A<1 calculates enough components to explain A*100 percent of the variation in X
 % PCA_model = PCA_model(...,Name,Value) specifies options using one or more Name,Value pair arguments.
 % [PCA_model, E] = PCA_model(X,A) also returns the residual matrix E
 %
@@ -20,7 +20,7 @@ function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 %   x_weight: [1xK] vector with scaling value for each column [] if no scaling
 %    NumComp: A number of PCA components
 %          T: [N×A] matrix with scores
-%          P: [KxA] matric with loadings
+%          P: [KxA] matrix with loadings
 %    ExplVar: [A×1] vector with explained variance for each component in percent
 % ExplVarCum: [A×1] vector with cumulative explained variance for each component in percent
 %        Eig: [A×1] vector with eigenvalue for each component in percent
@@ -30,27 +30,23 @@ function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 %      DmodX: [N×A] matrix with distance to model for each sample
 %
 % OTHER PARAMETERS passed as parameter-value pairs, defaults in []
-% 'NumComp': Integer with number of components to use [10]
-% 'AddComp': PCA model, Adds components to an existing PCA model
-% 'Tstart': Starting vector for NIPALS algorithm [Ones]
+% 'NumComp': Integer,  number of components to calculate [10]
+% 'AddComp': PCA model, adds components to an existing PCA model
+% 'Tstart': Type of starting vector for NIPALS algorithm [RowSum]
 % 'ScaleX': true/false for taking the log10 of the density [true]
 % 'CentreX': true/false for making axis square [true]
 % 'MVCheck': true/false for density smoothing [true]
-% 'MVTolCol':  Integer for the degree of smoothing [30]
-% 'MVTolRow': Integer for number of bins along the x-axis [200]
-% 'MVAverage': Integer for number of bins along the y-axis [200]
-% 'ConvValue': true/false only plot points that that are unique based
-%                 on a 1000*1000 grid [true]
-% 'MaxOrtho': Axes handle to existing axes that will be used [false]
-% 'ExplVarStop': true/false creates a color bar for the density [true]
-% 'MaxComp': double for thresholding density D(D>MaxDens) = MaxDens [inf]
-% 'MaxIter': Nx2 matrix describing points to be exluded for example
-% 'Verbose': Nx2 matrix describing points to be exluded for example
-% [0 0] may be useful for RNAseq data [ [] ]
-%
+% 'MVTolCol': Amount of column missing value tolerence in percent [20]
+% 'MVTolRow': Amount of row missing value tolerence in percent [20]
+% 'MVAverage': true/false replave MVs with column mean [false]
+% 'ConvValue': convergence criteria for t and p [1e-14]
+% 'ExplVarStop': double, explained variance used to decide NumComp []
+% 'MaxComp': integer, maximum number of components to calculate [100]
+% 'MaxIter': integer, maximun number of iteration [1000]
+% 'Verbose': 'Component'/'Iteration'/'None' [Component]
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% by Anders Berglund, 2020 aebergl@gmail.com                            %
+%%% by Anders Berglund, 2021 aebergl@gmail.com                            %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Input checking
@@ -94,11 +90,12 @@ else
     options = parseArguments(varargin{:});
 end
 
-% Check for Missing values
+% Check for Missing Values
 MVX=[];
 [N,K] = size(X);
 PCAmodel.col_rem = [];
 PCAmodel.row_rem = [];
+
 if options.MVCheck
     if options.Verbose
         fprintf('\n')
@@ -111,7 +108,7 @@ if options.MVCheck
         % check for colums with too many missing values
         mv_col = sum(MVX,1);
         PCAmodel.col_rem = mv_col / N * 100 > options.MVTolCol; % Keep indx for which columns were removed
-        if any(col_rem)
+        if any(PCAmodel.col_rem)
             X(:,PCAmodel.col_rem) = []; %Remove column with too many mv's
             MVX(:,PCAmodel.col_rem) = [];
             mv_col(PCAmodel.col_rem) = [];
@@ -150,7 +147,7 @@ if options.CentreX == 1
     if isempty(MVX) %No missing values
         PCAmodel.x_mean = sum(X,1) ./ N;
     else %Missing values
-        PCAmodel.x_mean = sum(X,1) ./ (N - mv_col); % Make sure it works with olde version without NaN support for mean
+        PCAmodel.x_mean = sum(X,1) ./ (N - mv_col); % Make sure it works with older version without NaN support for mean
     end
     
     X = bsxfun(@minus, X, PCAmodel.x_mean); %same as X = X - (ones(N,1) * x_mean);
@@ -173,7 +170,7 @@ if options.ScaleX == 1
     if isempty(MVX)% No MV
         PCAmodel.x_weight = sqrt(sum(X.^2,1)*(1/(N-1)));
     else
-        PCAmodel.x_weight = sqrt(sum(X.^2,1) ./ ((N - mv_col) - 1)); % Make sure it works with olde version without NaN support for std
+        PCAmodel.x_weight = sqrt(sum(X.^2,1) ./ ((N - mv_col) - 1)); % Make sure it works with older version without NaN support for std
     end
     
     indx = (PCAmodel.x_weight < 1e-8); % No divide by zero and also makes sure that variables with very small stDev do not get inflated
@@ -266,15 +263,15 @@ while OneMoreComp
         if size(options.Tstart,2) >= CurrentComp
             t0 = options.Tstart(:,CurrentComp);
         else
-            options.Tstart = 'Ones';
+            options.Tstart = 'RowSum';
         end
     else
         
         switch lower(options.Tstart)
-            case 'ones'
+            case 'rowsum'
                 t0 = X * p0; % Ensures no sign flipping and that changes in number of variables or samples give the same sign
             case 'maxvar'
-                [~,indx] = max(sum(X.^2)); %Start with x-variable which has the largest variance
+                [~,indx] = max(sum(X.^2)); %Start with x-variable with has the largest variance
                 t0 = X(:,indx);
             case 'random' % Why?
                 t0 =  X(:,randi(K));
@@ -331,7 +328,7 @@ while OneMoreComp
             fprintf('%u\t%u\t%g\t%g\t%g\n',CurrentComp,nit,Conv_Value_t,ConvergenceRatio,MaxOrth)
         end
         
-        if ConvergenceRatio <= 1 && IncreaseTrend == 0 % If the true bottom is reached the ration flips between >1 to <1
+        if ConvergenceRatio <= 1 && IncreaseTrend == 0 % If the true bottom is reached the Convergence Ratio flips between >1 to <1
             nIncreaseFlips = nIncreaseFlips + 1;
             IncreaseTrend = 1;
         end
@@ -365,6 +362,7 @@ while OneMoreComp
     end
     
     X = X - (t*p'); % Remove component and start over
+    
     if ~isempty(MVX)
         X(~MVX) = 0;
     end
@@ -434,11 +432,11 @@ function options = parseArguments(varargin)
 options = inputParser;
 
 expectedVerbose = {'Component', 'Iteration', 'None'};
-expectedTstart = {'Ones', 'MaxVar','Random','First'};
+expectedTstart = {'RowSum', 'MaxVar','Random','First'};
 
 addParameter(options,'NumComp', 0, @(x) isnumeric(x) && isscalar(x) && x > 0);
 addParameter(options,'AddComp', [],  @(x) isstruct(x) );
-addParameter(options,'Tstart', 'Ones', @(x) ismatrix(x) || any(validatestring(x,expectedTstart)));
+addParameter(options,'Tstart', 'RowSum', @(x) ismatrix(x) || any(validatestring(x,expectedTstart)));
 addParameter(options,'ScaleX', false,  @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'CentreX', true, @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'MVCheck', true, @(x) islogical(x) || x==1 || x==0);
@@ -446,7 +444,6 @@ addParameter(options,'MVTolCol', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && 
 addParameter(options,'MVTolRow', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
 addParameter(options,'MVAverage', false, @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'ConvValue', 1e-14, @(x) isnumeric(x) && isscalar(x));
-addParameter(options,'MaxOrtho', 1e-8, @(x) isnumeric(x) && isscalar(x));
 addParameter(options,'ExplVarStop', 100, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
 addParameter(options,'MaxComp', 100, @(x) isnumeric(x) && isscalar(x) && x>0);
 addParameter(options,'MaxIter', 1000, @(x) isnumeric(x) && isscalar(x) && x>0);
