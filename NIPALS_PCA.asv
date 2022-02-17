@@ -6,7 +6,6 @@ function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 % PCA_model = NIPALS_PCA(X) Calculates 10 components and returns the PCA_model structure
 % PCA_model = NIPALS_PCA(X, A) If A=integer A components are calculated
 % PCA_model = NIPALS_PCA(X, A) If 0<A<1 calculates enough components to explain A*100 percent of the variation in X
-% T         = NIPALS_PCA(X, A,'Tonly',true) Only outputs T scores
 % PCA_model = PCA_model(...,Name,Value) specifies options using one or more Name,Value pair arguments.
 % [PCA_model, E] = PCA_model(X,A) also returns the residual matrix E
 %
@@ -34,7 +33,7 @@ function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 % 'NumComp':     Integer,  number of components to calculate [10]
 % 'AddComp':     PCA model, adds components to an existing PCA model, X is E from PCA model
 % 'Tstart':      Type of starting vector for NIPALS algorithm [RowSum]
-% 'Tonly':       true/false only OUTPUT T [false]
+% 'Tonly':       true/false only OU
 % 'CentreX':     true/false for removing the mean from each column in X [true]
 % 'ScaleX':      true/false for scaling each column in X to unit variance [false]
 % 'MVCheck':     true/false for check for missing valeus in X [true]
