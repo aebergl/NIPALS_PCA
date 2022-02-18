@@ -1,4 +1,4 @@
-function [PCAmodel,X] = NIPALS_PCA(X,varargin)
+ function [PCAmodel,X] = NIPALS_PCA(X,varargin)
 % NIPALS_PCA PCA calculation using NIPALS algorithm, handles missing values
 %
 % USAGE:
