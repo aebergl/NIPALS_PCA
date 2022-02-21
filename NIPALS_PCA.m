@@ -11,7 +11,7 @@
 % [PCA_model, E] = PCA_model(X,A) also returns the residual matrix E
 %
 % INPUTS:
-% * X is a N*K matrix which may contain missing values (MV)
+% * X is a NxK matrix which may contain missing values (MV)
 %
 % OUTPUTS:
 % * PCA_Model: PCA_model structure with the following fields
@@ -30,9 +30,12 @@
 %   ssx_orig: Original sum of squares
 %      DmodX: [N×A] matrix with distance to model for each sample
 %
+% * E:        [NxK] residual matrix
+%
 % OTHER PARAMETERS passed as parameter-value pairs, defaults in []
 % 'NumComp':     Integer,  number of components to calculate [10]
 % 'AddComp':     PCA model, adds components to an existing PCA model, X is E from PCA model
+% 'FullConv':    true/false stops after full convergence (or maxiter) [true]
 % 'Tstart':      Type of starting vector for NIPALS algorithm [RowSum]
 % 'Tonly':       true/false only OUTPUT T [false]
 % 'CentreX':     true/false for removing the mean from each column in X [true]
@@ -44,12 +47,13 @@
 % 'ConvValue':   convergence criteria for t and p [1e-14]
 % 'ExplVarStop': double, explained variance used to decide NumComp []
 % 'MaxComp':     integer, maximum number of components to calculate [100]
-% 'MaxIter':     integer, maximun number of iteration [1000]
+% 'MaxIter':     integer, maximun number of iteration [5000]
 % 'Verbose':     'Component'/'Iteration'/'None' [Component]
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% by Anders Berglund, 2021 aebergl@gmail.com                            %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 % Input checking
 if nargin < 1
@@ -128,7 +132,7 @@ if options.MVCheck
             fprintf('%u rows removed with more than %u %% missing values\n',length(row_rem),options.MVTolRow);
             mv_col = sum(MVX); %Checks again
         end
-        
+
         %Replace NaN with zeros
         X(MVX) = 0;
         MVX = ~MVX; % Create the "Hole" matrix with 0 where there are NaNs
@@ -213,15 +217,17 @@ if options.AddComp % Adding to the old PCA models
     PCAmodel.MaxOrth = ones(options.NumComp,1);
 else % Create a new PCA model scructure
     CurrentComp = 0;
-    PCAmodel.NumComp = options.NumComp;
-    PCAmodel.T = zeros(N,options.NumComp);
-    PCAmodel.P = zeros(K,options.NumComp);
-    PCAmodel.ExplVar = zeros(options.NumComp,1);
-    PCAmodel.ExplVarCum = zeros(options.NumComp,1);
-    PCAmodel.Eig = ones(options.NumComp,1);
-    PCAmodel.nIter = ones(options.NumComp,1);
-    PCAmodel.MaxOrth = ones(options.NumComp,1);
     PCAmodel.ssx_orig = sum(X.^2,'all'); % Original sum of squares
+    PCAmodel.T = zeros(N,options.NumComp);
+    if ~options.Tonly
+        PCAmodel.NumComp = options.NumComp;
+        PCAmodel.P = zeros(K,options.NumComp);
+        PCAmodel.ExplVar = zeros(options.NumComp,1);
+        PCAmodel.ExplVarCum = zeros(options.NumComp,1);
+        PCAmodel.Eig = ones(options.NumComp,1);
+        PCAmodel.nIter = ones(options.NumComp,1);
+        PCAmodel.MaxOrth = ones(options.NumComp,1);
+    end
 end
 
 % make sure that we have some variation to work with
@@ -274,7 +280,7 @@ while OneMoreComp
     %MaxOrthStop = false;
     nIncreaseFlips = 0;
     IncreaseTrend = 0;
-    
+
     while ~Converged  % Iterate until convergence
         % Calculate Loadings
         if isempty(MVX)
@@ -283,24 +289,24 @@ while OneMoreComp
             p = (t0' * X ./ (t0.^2' * MVX))';% Adjust for missing values
         end
         p = p / norm(p); % Normalise p to unit length
-        
+
         % Calculate Scores
         if isempty(MVX)
             t = X * p;
         else
             t = X * p ./ (MVX * p.^2); % Adjust for missing values
         end
-        
+
         %Check Convergence for both t and p
         Conv_Value_t = sum((t-t0).^2);
         Conv_Value_p = sum((p-p0).^2);
-        
+
         if CurrentComp > 1
             % Check orthogonality to previous components, returns the
             % largest value
             MaxOrth = max(abs(sum(t .* PCAmodel.T(:,1:CurrentComp-1),1)));
         end
-        
+
         if nit > 0
             if Conv_Value_t > 0 % Compares the rate of convergence
                 ConvergenceRatio = ConvergenceValue_old/Conv_Value_t;
@@ -308,35 +314,35 @@ while OneMoreComp
         else
             ConvergenceRatio = NaN;
         end
-        
+
         if strcmp('Iteration',options.Verbose)
             fprintf('%u\t%u\t%g\t%g\t%g\n',CurrentComp,nit,Conv_Value_t,ConvergenceRatio,MaxOrth)
         end
-        
+
         if ConvergenceRatio <= 1 && IncreaseTrend == 0 % If the true bottom is reached the Convergence Ratio flips between >1 to <1
             nIncreaseFlips = nIncreaseFlips + 1;
             IncreaseTrend = 1;
         end
-        
-        if ConvergenceRatio > 1 
+
+        if ConvergenceRatio > 1
             IncreaseTrend = 0;
         end
-        
+
         % Check individual stopping criteria
         if nit >= options.MaxIter
             MaxIterStop = true;
         end
-        
+
         if Conv_Value_t < options.ConvValue && Conv_Value_p < options.ConvValue
             ConvergenceValueStop = true;
         end
-        
+
         if nIncreaseFlips >= 3
             ConvergenceRatioStop = true;
         end
-        
-        
-        if MaxIterStop || (ConvergenceValueStop && ConvergenceRatioStop) || Conv_Value_t == 0
+
+
+        if MaxIterStop || (ConvergenceValueStop && (ConvergenceRatioStop || ~options.FullConv)) || Conv_Value_t == 0
             Converged = true;
         else
             t0 = t;
@@ -345,17 +351,17 @@ while OneMoreComp
             ConvergenceValue_old = Conv_Value_t;
         end
     end
-    
+
     X = X - (t*p'); % Remove component and start over
-    
+
     if ~isempty(MVX)
         X(~MVX) = 0;
     end
-    
+
     % Calculate sum of squares once and only once
     sumSquaresRow = sum(X.^2,2);
     sumSquares = sum(sumSquaresRow);
-    
+
     % Calculate DModX
     if isempty(MVX)
         [S1]= sqrt(sumSquaresRow / (K-CurrentComp));
@@ -370,10 +376,10 @@ while OneMoreComp
         df=((N-CurrentComp-1)*(K-CurrentComp))-sum(K-mv_row);
     end
     S0=sqrt(sumSquares / df);
-    
+
     % Calculate explained variation
     ExplVarCum = (PCAmodel.ssx_orig - sumSquares) / PCAmodel.ssx_orig * 100; % Calculate cumulative explained variation
-    
+
     if CurrentComp == 1
         ExplVar = ExplVarCum;
     else
@@ -381,16 +387,19 @@ while OneMoreComp
     end
     ExplVarCum_PrevComp = ExplVarCum;
     Eig = ExplVar * min_N_K / 100; %Calculates the eigen value
-    
+
     % Save PCA component results
-    PCAmodel.DmodX(:,CurrentComp) =  S1/S0;
     PCAmodel.T(:,CurrentComp) = t;
-    PCAmodel.P(:,CurrentComp) = p;
-    PCAmodel.ExplVarCum(CurrentComp) = ExplVarCum;
-    PCAmodel.ExplVar(CurrentComp) = ExplVar;
-    PCAmodel.Eig(CurrentComp) = Eig;
-    PCAmodel.nIter(CurrentComp) = nit;
-    PCAmodel.MaxOrth(CurrentComp) = MaxOrth;
+    if ~options.Tonly
+        PCAmodel.DmodX(:,CurrentComp) =  S1/S0;
+
+        PCAmodel.P(:,CurrentComp) = p;
+        PCAmodel.ExplVarCum(CurrentComp) = ExplVarCum;
+        PCAmodel.ExplVar(CurrentComp) = ExplVar;
+        PCAmodel.Eig(CurrentComp) = Eig;
+        PCAmodel.nIter(CurrentComp) = nit;
+        PCAmodel.MaxOrth(CurrentComp) = MaxOrth;
+    end
     if options.Verbose
         fprintf('%5u %5u %8.2f %6.2f %7.2f %9.2g %13.2g\n',CurrentComp,nit,Eig,ExplVar,ExplVarCum,Conv_Value_t,MaxOrth)
     end
@@ -398,18 +407,21 @@ while OneMoreComp
     if CurrentComp >= options.NumComp || ExplVarCum >= options.ExplVarStop
         OneMoreComp = false;
     end
-    
 end
 % Only keep the PCA components we calculated
-PCAmodel.NumComp = CurrentComp;
-PCAmodel.T = PCAmodel.T(:,1:CurrentComp);
-PCAmodel.P = PCAmodel.P(:,1:CurrentComp);
-PCAmodel.DmodX = PCAmodel.DmodX(:,1:CurrentComp);
-PCAmodel.ExplVarCum  = PCAmodel.ExplVarCum(1:CurrentComp);
-PCAmodel.ExplVar = PCAmodel.ExplVar(1:CurrentComp);
-PCAmodel.Eig  = PCAmodel.Eig(1:CurrentComp);
-PCAmodel.nIter = PCAmodel.nIter(1:CurrentComp);
-PCAmodel.MaxOrth = PCAmodel.MaxOrth(1:CurrentComp);
+if ~options.Tonly
+    PCAmodel.NumComp = CurrentComp;
+    PCAmodel.T = PCAmodel.T(:,1:CurrentComp);
+    PCAmodel.P = PCAmodel.P(:,1:CurrentComp);
+    PCAmodel.DmodX = PCAmodel.DmodX(:,1:CurrentComp);
+    PCAmodel.ExplVarCum  = PCAmodel.ExplVarCum(1:CurrentComp);
+    PCAmodel.ExplVar = PCAmodel.ExplVar(1:CurrentComp);
+    PCAmodel.Eig  = PCAmodel.Eig(1:CurrentComp);
+    PCAmodel.nIter = PCAmodel.nIter(1:CurrentComp);
+    PCAmodel.MaxOrth = PCAmodel.MaxOrth(1:CurrentComp);
+else
+    PCAmodel  = PCAmodel.T(:,1:CurrentComp);
+end
 
 end
 
@@ -425,13 +437,15 @@ addParameter(options,'Tstart', 'RowSum', @(x) ismatrix(x) || any(validatestring(
 addParameter(options,'ScaleX', false,  @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'CentreX', true, @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'MVCheck', true, @(x) islogical(x) || x==1 || x==0);
+addParameter(options,'Tonly', false, @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'MVTolCol', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
 addParameter(options,'MVTolRow', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
 addParameter(options,'MVAverage', false, @(x) islogical(x) || x==1 || x==0);
+addParameter(options,'FullConv', true, @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'ConvValue', 1e-14, @(x) isnumeric(x) && isscalar(x));
 addParameter(options,'ExplVarStop', 100, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
 addParameter(options,'MaxComp', 100, @(x) isnumeric(x) && isscalar(x) && x>0);
-addParameter(options,'MaxIter', 1000, @(x) isnumeric(x) && isscalar(x) && x>0);
+addParameter(options,'MaxIter', 5000, @(x) isnumeric(x) && isscalar(x) && x>0);
 addParameter(options,'Verbose', 'Component', @(x) islogical(x) || any(validatestring(x,expectedVerbose)));
 parse(options,varargin{:});
 options = options.Results;
