@@ -119,7 +119,7 @@ if options.MVCheck
             MVX(:,PCAmodel.col_rem) = [];
             mv_col(PCAmodel.col_rem) = [];
             disp (' ')
-            fprintf('%u columns removed with more than %u %% missing values\n',length(col_rem),options.MVTolCol);
+            fprintf('%u columns removed with more than %u %% missing values\n',sum(PCAmodel.col_rem),options.MVTolCol);
         end
         % check for rows with too many missing values
         mv_row = sum(MVX,2);
@@ -129,7 +129,7 @@ if options.MVCheck
             MVX(PCAmodel.row_rem,:) = [];
             mv_row(PCAmodel.row_rem) = [];
             disp (' ')
-            fprintf('%u rows removed with more than %u %% missing values\n',length(row_rem),options.MVTolRow);
+            fprintf('%u rows removed with more than %u %% missing values\n',sum(PCAmodel.row_rem),options.MVTolRow);
             mv_col = sum(MVX); %Checks again
         end
 
@@ -359,14 +359,14 @@ while OneMoreComp
     end
 
     % Calculate sum of squares once and only once
-    sumSquaresRow = sum(X.^2,2);
+    sumSquaresRow = sum(X.^2,2)';
     sumSquares = sum(sumSquaresRow);
 
     % Calculate DModX
     if isempty(MVX)
         [S1]= sqrt(sumSquaresRow / (K-CurrentComp));
     else
-        [S1]= sqrt(sumSquaresRow ./ (MV.mv_row-CurrentComp)');
+        [S1]= sqrt(sumSquaresRow ./ (mv_row-CurrentComp)');
     end
     v=sqrt(N/(N-CurrentComp-1));
     S1=S1 * v;
