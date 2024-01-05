@@ -107,7 +107,7 @@ if options.MVCheck
         fprintf('\n')
         fprintf('Checking for missing values....\n')
     end
-    MVX = isnan(X); %Logical matrix with true for NaNs
+    MVX = ~isfinite(X); %Logical matrix with true for NaNs. Updated to include -inf and inf, use isfinite instead of isnan
     if ~any(MVX,'all')
         MVX = [];  %No missing values,  MV=[];
     else

@@ -24,7 +24,7 @@ if size(PCAmodel.P,1) ~= size(X,2)
 end
 
 % Check for missing values
-MVX = isnan(X); %Logical matrix with true for NaNs
+MVX = ~isfinite(X); %Logical matrix with true for NaNs. Updated to include -inf and inf, use isfinite instead of isnan
 if ~any(MVX,'all')
     MVX = [];  %No missing values,  MVX=[];
 else
@@ -48,7 +48,7 @@ if ~isempty(PCAmodel.x_weight)
     end
 
 end
-[N,K] = size(X);
+[N,~] = size(X);
 T = zeros(N,PCAmodel.NumComp);
 
 
