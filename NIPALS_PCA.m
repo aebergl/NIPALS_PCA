@@ -364,18 +364,18 @@ while OneMoreComp
 
     % Calculate DModX
     if isempty(MVX)
-        [S1]= sqrt(sumSquaresRow / (K-CurrentComp));
+        [S1] = sqrt(sumSquaresRow / (K-CurrentComp));
     else
-        [S1]= sqrt(sumSquaresRow ./ (mv_row-CurrentComp)');
+        [S1] = sqrt(sumSquaresRow ./ (mv_row-CurrentComp)');
     end
-    v=sqrt(N/(N-CurrentComp-1));
-    S1=S1 * v;
+    v = sqrt(N/(N-CurrentComp-1));
+    S1 = S1 * v;
     if isempty(MVX)
         df = ((N-CurrentComp-1)*(K-CurrentComp));
     else
-        df=((N-CurrentComp-1)*(K-CurrentComp))-sum(K-mv_row);
+        df = ((N-CurrentComp-1)*(K-CurrentComp))-sum(K-mv_row);
     end
-    S0=sqrt(sumSquares / df);
+    S0 = sqrt(sumSquares / df);
 
     % Calculate explained variation
     ExplVarCum = (PCAmodel.ssx_orig - sumSquares) / PCAmodel.ssx_orig * 100; % Calculate cumulative explained variation
