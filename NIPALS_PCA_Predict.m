@@ -56,7 +56,7 @@ for i=1:PCAmodel.NumComp
     if isempty(MVX)
         t = X * PCAmodel.P(:,i);
     else
-        t = X * PCAmodel.W(:,i) ./ (MVX * PC.Model.W(:,i).^2);
+        t = X * PCAmodel.P(:,i) ./ (MVX * PCAmodel.P(:,i).^2);
     end
     T(:,i) = t;
     X = X - t * PCAmodel.P(:,i)';
