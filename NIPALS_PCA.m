@@ -30,7 +30,7 @@
 %   ssx_orig: Original sum of squares
 %      DmodX: [N×A] matrix with distance to model for each sample
 %
-% * E:        [NxK] residual matrix
+% * X:        [NxK] residual matrix
 %
 % OTHER PARAMETERS passed as parameter-value pairs, defaults in []
 % 'NumComp':     Integer,  number of components to calculate [10]
@@ -408,6 +408,12 @@ while OneMoreComp
         OneMoreComp = false;
     end
 end
+
+% Put back Missing values
+if ~isempty(MVX)
+    X(~MVX) = NaN;
+end
+
 % Only keep the PCA components we calculated
 if ~options.Tonly
     PCAmodel.NumComp = CurrentComp;
@@ -442,7 +448,7 @@ addParameter(options,'MVTolCol', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && 
 addParameter(options,'MVTolRow', 20, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
 addParameter(options,'MVAverage', false, @(x) islogical(x) || x==1 || x==0);
 addParameter(options,'FullConv', true, @(x) islogical(x) || x==1 || x==0);
-addParameter(options,'ConvValue', 1e-14, @(x) isnumeric(x) && isscalar(x));
+addParameter(options,'ConvValue', 1e-16, @(x) isnumeric(x) && isscalar(x));
 addParameter(options,'ExplVarStop', 100, @(x) isnumeric(x) && isscalar(x) && x>0 && x<100);
 addParameter(options,'MaxComp', 100, @(x) isnumeric(x) && isscalar(x) && x>0);
 addParameter(options,'MaxIter', 5000, @(x) isnumeric(x) && isscalar(x) && x>0);
