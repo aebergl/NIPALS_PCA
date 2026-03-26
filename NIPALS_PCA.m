@@ -153,7 +153,8 @@ if options.CentreX == 1
     else %Missing values
         PCAmodel.x_mean = sum(X,1) ./ (N - mv_col); % Make sure it works with older version without NaN support for mean
     end
-    X = bsxfun(@minus, X, PCAmodel.x_mean); %same as X = X - (ones(N,1) * x_mean);
+    %X = bsxfun(@minus, X, PCAmodel.x_mean); %same as X = X - (ones(N,1) * x_mean);
+    X = X - PCAmodel.x_mean;
     if ~isempty(MVX)
         X(~MVX) = 0; %replace MV's with zeros
     end
@@ -174,7 +175,8 @@ if options.ScaleX == 1
     indx = (PCAmodel.x_weight < 1e-8); % No divide by zero and also makes sure that variables with very small stDev do not get inflated
     PCAmodel.x_weight = 1 ./ PCAmodel.x_weight;
     PCAmodel.x_weight(indx) = 0;
-    X = bsxfun(@times, X, PCAmodel.x_weight); %same as X = X .* (ones(N,1) * x_weight);
+    %X = bsxfun(@times, X, PCAmodel.x_weight); %same as X = X .* (ones(N,1) * x_weight);
+    X = X .* PCAmodel.x_weight;
     if ~isempty(MVX)
         X(~MVX) = 0;%replace MV's with zeros
     end
